@@ -13,6 +13,13 @@ corpus = ['Knight Lore é um jogo eletrônico de ação e aventura desenvolvido 
 
 regexp = re.compile('[a-zA-Z0-9 éáíúóãõçôâ-]') 
 
+'''
+import os
+for filename in os.listdir():
+   with open(os.path.join(os.getcwd(), filename), 'r') as f:
+       corpus.append(f.read())
+'''
+
 def dice(freq, pref_freqs, suff_freqs):
     pref_freqs = list(pref_freqs)
     suff_freqs = list(suff_freqs)
