@@ -5,6 +5,7 @@ Created on Tue May  3 18:54:37 2022
 @author: eugen
 """
 import re
+import numpy as np
 from sklearn.feature_extraction.text import CountVectorizer
 
 corpus = ['Knight Lore é um jogo eletrônico de ação e aventura desenvolvido e lançado pela Ultimate Play the Game para o ZX Spectrum em 1984. O jogo é conhecido pelo uso de gráficos isométricos, que popularizou ainda mais em jogos eletrônicos. Em Knight Lore, Sabreman tem quarenta dias para coletar objetos em um castelo e preparar uma cura para sua maldição do lobisomem. Cada sala do castelo é representada em monocromático em sua própria tela e consiste em blocos para escalar, obstáculos para evitar e quebra-cabeças para resolver.',
@@ -46,5 +47,7 @@ corpus =  processText(corpus)
 
 
 vectorizer = CountVectorizer(analyzer='word', ngram_range=(2, 7))
-X = vectorizer.fit_transform(corpus)
-print(vectorizer.get_feature_names_out())
+vec_fit = vectorizer.fit_transform(corpus)
+word_list = vec_fit.get_feature_names_out()
+count_list = np.asarray(vec_fit.sum(axis=0))
+freq_dict = dict(zip(word_list,count_list))
