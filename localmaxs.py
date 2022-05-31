@@ -8,6 +8,7 @@ import re
 import os
 import numpy as np
 import pickle
+import matplotlib.pyplot as plt
 from zipfile import ZipFile
 from sklearn.feature_extraction.text import CountVectorizer
 
@@ -46,7 +47,7 @@ def processText(corpus):
         corp.append(''.join(listT))
     return corp
 
-readPickle = False
+readPickle = True
 if readPickle:
     with open('corpusList', 'rb') as fp:
         n_list = pickle.load(fp)
@@ -57,11 +58,72 @@ with open('corpusList', 'wb') as fp:
         pickle.dump(corpus, fp)
 
 
-vectorizer = CountVectorizer(analyzer='word', ngram_range=(2, 7))
+'''
+vectorizer = CountVectorizer(analyzer='word', ngram_range=(2, 7), token_pattern = '[a-zA-Z0-9$&+,:;=?@#|<>.^*()%!-]+')
 vec_fit = vectorizer.fit_transform(corpus)
 word_list = vectorizer.get_feature_names_out()
 count_list = np.asarray(vec_fit.sum(axis=0))[0]
 freq_dict = dict(zip(word_list,count_list))
 
-freq_dict = {key:val for key, val in freq_dict.items() if val != 1}
+freq_dict = {key:val for key, val in freq_dict.items() if val > 1}
+
+'''
+
+
+
+
+
+vectorizer = CountVectorizer(analyzer='word', token_pattern = '[a-zA-Z0-9$&+,:;=?@#|<>.^*()%!-]+')
+vec_fit = vectorizer.fit_transform(corpus)
+single_word_list = vectorizer.get_feature_names_out()
+single_count_list = np.asarray(vec_fit.sum(axis=0))[0]
+single_freq_dict = dict(zip(single_word_list,single_count_list))
+
+single_freq_dict = {key:val for key, val in single_freq_dict.items() if val > 1}
+single_freq_dict = {k: v for k, v in sorted(single_freq_dict.items(), key=lambda item: item[1])}
+values = np.fromiter(single_freq_dict.values(), dtype=float)
+stop_words_list = np.stack((np.arange(0, len(single_freq_dict)), values), axis = -1)
+list_of_counts = list(single_freq_dict.items())
+
+
+from kneebow.rotor import Rotor
+ 
+rotor = Rotor()
+rotor.fit_rotate(stop_words_list)
+elbow_idx = rotor.get_elbow_index()
+print(elbow_idx)  
+#rotor.plot_elbow()
+
+
+'''
+from kneed import KneeLocator
+kn = KneeLocator(stop_words_list[:,0] ,stop_words_list[:,1], curve='convex', direction='increasing')
+print(int(kn.knee))
+
+stop = 0
+deltaX = 100
+for idx, i, j in zip(range(0, len(values)), values, values[deltaX:]):
+    if((j-i)>stop): stop = idx
+print(stop)
+'''
+
+fig = plt.figure()
+ax = plt.gca()
+ax.scatter(stop_words_list[:,0] ,stop_words_list[:,1] , s=1,c='blue', marker='.')
+ax.set_yscale('log')
+#ax.set_xscale('log')
+fig.set_size_inches(10, 7)
+plt.axvline(x=elbow_idx, color='r', linestyle='--')
+
+
+
+
+
+
+
+
+
+
+
+
     
