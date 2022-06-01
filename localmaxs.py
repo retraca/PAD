@@ -22,7 +22,7 @@ for file in fileList:
     corpus.append((archive.read(file)).decode('UTF-8'))
 
 
-regexp = re.compile('[a-zA-Z0-9 éáíúóãõçôâ-]') 
+regexp = re.compile('[\w \-]') 
 
 def dice(freq, pref_freqs, suff_freqs):
     pref_freqs = list(pref_freqs)
@@ -40,17 +40,16 @@ def processText(corpus):
         listT = list(text)
         i = 0
         for  c in listT:
-            print(c)
-            if not regexp.search(c) and not listT[i-1]==' ':
+            if (not regexp.search(c) and not listT[i-1]==' ') or not regexp.search(listT[i-1]) and regexp.search(c):
                 listT.insert(i, ' ')
             i +=1
         corp.append(''.join(listT))
     return corp
 
-readPickle = True
+readPickle = False
 if readPickle:
     with open('corpusList', 'rb') as fp:
-        n_list = pickle.load(fp)
+        corpus = pickle.load(fp)
 else: 
     corpus =  processText(corpus)
 
@@ -58,8 +57,8 @@ with open('corpusList', 'wb') as fp:
         pickle.dump(corpus, fp)
 
 
-'''
-vectorizer = CountVectorizer(analyzer='word', ngram_range=(2, 7), token_pattern = '[a-zA-Z0-9$&+,:;=?@#|<>.^*()%!-]+')
+
+vectorizer = CountVectorizer(analyzer='word', ngram_range=(1, 8),token_pattern=r'(?u)\b\w\w+\b|(?u)\b^\w^\w+\b')
 vec_fit = vectorizer.fit_transform(corpus)
 word_list = vectorizer.get_feature_names_out()
 count_list = np.asarray(vec_fit.sum(axis=0))[0]
@@ -67,18 +66,21 @@ freq_dict = dict(zip(word_list,count_list))
 
 freq_dict = {key:val for key, val in freq_dict.items() if val > 1}
 
-'''
 
 
 
-
-
-vectorizer = CountVectorizer(analyzer='word', token_pattern = '[a-zA-Z0-9$&+,:;=?@#|<>.^*()%!-]+')
+vectorizer = CountVectorizer(analyzer='word',token_pattern=r'\w+|[^\w]')
 vec_fit = vectorizer.fit_transform(corpus)
 single_word_list = vectorizer.get_feature_names_out()
 single_count_list = np.asarray(vec_fit.sum(axis=0))[0]
 single_freq_dict = dict(zip(single_word_list,single_count_list))
-
+'''
+vectorizer = CountVectorizer(analyzer='word',token_pattern=r'[\w^\w+]')
+vec_fit = vectorizer.fit_transform(corpus)
+single_s_char_list = vectorizer.get_feature_names_out()
+single_s_char_count_list = np.asarray(vec_fit.sum(axis=0))[0]
+single_freq_dict.update(dict(zip(single_s_char_list,single_s_char_count_list)))
+'''
 single_freq_dict = {key:val for key, val in single_freq_dict.items() if val > 1}
 single_freq_dict = {k: v for k, v in sorted(single_freq_dict.items(), key=lambda item: item[1])}
 values = np.fromiter(single_freq_dict.values(), dtype=float)
