@@ -7,10 +7,12 @@ Created on Tue May  3 18:54:37 2022
 import re
 import os
 import numpy as np
+import math
 import pickle
 import matplotlib.pyplot as plt
+from nltk import FreqDist
+from nltk.util import ngrams 
 from zipfile import ZipFile
-from sklearn.feature_extraction.text import CountVectorizer
 
 corpus = []
 
@@ -53,39 +55,57 @@ if readPickle:
 else: 
     corpus =  processText(corpus)
 
-with open('corpusList', 'wb') as fp:
-        pickle.dump(corpus, fp)
+    with open('corpusList', 'wb') as fp:
+            pickle.dump(corpus, fp)
+
+
+def compute_freq_doc(text, minG, maxG):
+
+   freq_dist = FreqDist()
+
+   if len(text) > 1:
+       tokens = text.strip().split()
+        
+       for i in range(minG, maxG+1):
+           grams = ngrams(tokens, i)
+           freq_dist.update(grams)
+
+   return dict(freq_dist)
+
+
+def compute_freq_corpus(minG, maxG):
+
+   freq_dist = FreqDist()
+
+   for text in corpus:
+        if len(text) > 1:
+            tokens = text.strip().split()
+            
+            for i in range(minG, maxG+1):
+                grams = ngrams(tokens, i)
+                freq_dist.update(grams)
+
+   return dict(freq_dist)
+
+
+freq_dict = compute_freq_corpus(1, 8)
+
+
+#transform tuple keys to string and filter all ngrams value > 1
+freq_dict = {' '.join(key):val for key, val in freq_dict.items() if val > 1}
 
 
 
-vectorizer = CountVectorizer(analyzer='word', ngram_range=(1, 8),token_pattern=r'(?u)\b\w\w+\b|(?u)\b^\w^\w+\b')
-vec_fit = vectorizer.fit_transform(corpus)
-word_list = vectorizer.get_feature_names_out()
-count_list = np.asarray(vec_fit.sum(axis=0))[0]
-freq_dict = dict(zip(word_list,count_list))
-
-freq_dict = {key:val for key, val in freq_dict.items() if val > 1}
-
-
-
-
-vectorizer = CountVectorizer(analyzer='word',token_pattern=r'\w+|[^\w]')
-vec_fit = vectorizer.fit_transform(corpus)
-single_word_list = vectorizer.get_feature_names_out()
-single_count_list = np.asarray(vec_fit.sum(axis=0))[0]
-single_freq_dict = dict(zip(single_word_list,single_count_list))
-'''
-vectorizer = CountVectorizer(analyzer='word',token_pattern=r'[\w^\w+]')
-vec_fit = vectorizer.fit_transform(corpus)
-single_s_char_list = vectorizer.get_feature_names_out()
-single_s_char_count_list = np.asarray(vec_fit.sum(axis=0))[0]
-single_freq_dict.update(dict(zip(single_s_char_list,single_s_char_count_list)))
-'''
-single_freq_dict = {key:val for key, val in single_freq_dict.items() if val > 1}
+#unigrams
+single_freq_dict = {key:val for key, val in freq_dict.items() if len(key.split()) == 1}
+#sort unigrams by value
 single_freq_dict = {k: v for k, v in sorted(single_freq_dict.items(), key=lambda item: item[1])}
+
+
 values = np.fromiter(single_freq_dict.values(), dtype=float)
 stop_words_list = np.stack((np.arange(0, len(single_freq_dict)), values), axis = -1)
 list_of_counts = list(single_freq_dict.items())
+
 
 
 from kneebow.rotor import Rotor
@@ -97,17 +117,17 @@ print(elbow_idx)
 #rotor.plot_elbow()
 
 
-'''
+
 from kneed import KneeLocator
 kn = KneeLocator(stop_words_list[:,0] ,stop_words_list[:,1], curve='convex', direction='increasing')
 print(int(kn.knee))
 
 stop = 0
-deltaX = 100
+deltaX = 200
 for idx, i, j in zip(range(0, len(values)), values, values[deltaX:]):
     if((j-i)>stop): stop = idx
 print(stop)
-'''
+
 
 fig = plt.figure()
 ax = plt.gca()
@@ -115,10 +135,74 @@ ax.scatter(stop_words_list[:,0] ,stop_words_list[:,1] , s=1,c='blue', marker='.'
 ax.set_yscale('log')
 #ax.set_xscale('log')
 fig.set_size_inches(10, 7)
-plt.axvline(x=elbow_idx, color='r', linestyle='--')
+plt.axvline(x=stop, color='r', linestyle='--')
 
 
+def count_RE_in_doc(RE):
+    count = 0
+    for text in corpus:
+        if RE in text:
+            count += 1
+    
+    return count
 
+def freq(RE,doc):
+    freq_dict = compute_freq_doc(doc, len(RE.split()), len(RE.split()))
+    
+    return freq_dict[RE]
+
+
+def tf_idf(RE, doc_idx):
+    doc = corpus(idx)
+    
+    freq_RE = freq(RE,doc)
+    
+    return (freq_RE/len(doc))*math.log(len(corpus)/count_RE_in_doc(RE))
+
+def calc_prob(word):
+    sum_p = 0
+    for doc in corpus:
+        sum_p += freq(word, doc)/len(doc.split())
+    return (1/len(corpus))*sum_p
+
+def calc_cov(A,B):
+    probA = calc_prob(A)
+    probB = calc_prob(B)
+    sum_p = 0
+    for doc in corpus:
+        sum_p += (freq(A, doc)/len(doc.split())-probA)*(freq(B, doc)/len(doc.split())-probB)
+    return (1/len(corpus)-1)*sum_p
+
+def correlation(A,B):
+    return calc_cov(A, B)/(math.sqrt(calc_cov(A, A))*(math.sqrt(calc_cov(B, B))))
+
+
+  
+def IP(A,B):
+    count = 0
+    sum_dist = 0 
+    for doc in corpus:
+        if A in doc and B in doc:
+            count += 1
+            
+        
+        #TODO calc closest and farthest distances between A and B
+        
+    
+    return 1-(1/count)*sum_dist
+        
+       
+def sem_prox(A,B):
+    return correlation(A, B)*math.sqrt(IP(A,B))
+
+def score_implicit(RE,doc):
+    return #TODO
+            
+            
+            
+
+    
+    
 
 
 
