@@ -177,6 +177,59 @@ def correlation(A,B):
     return calc_cov(A, B)/(math.sqrt(calc_cov(A, A))*(math.sqrt(calc_cov(B, B))))
 
 
+def get_distances(A,B,doc):
+    listA = A.split()
+    listB = B.split()
+    listDoc = doc.strip().split()
+    
+    idx_pos_A_1 = [ i for i in range(len(listDoc)) if listDoc[i] == listA[0] ]
+    idx_pos_A_2 = [ i for i in range(len(listDoc)) if listDoc[i] == listA[-1] ]
+    idx_pos_B_1 = [ i for i in range(len(listDoc)) if listDoc[i] == listB[0] ]
+    idx_pos_B_2 = [ i for i in range(len(listDoc)) if listDoc[i] == listB[-1] ]
+    
+    idx_pos_A_1_copy = idx_pos_A_1
+    idx_pos_A_2_copy = idx_pos_A_2
+    idx_pos_B_1_copy = idx_pos_B_1
+    idx_pos_B_2_copy = idx_pos_B_2
+    
+    for pos, idx in enumerate(idx_pos_A_1_copy):
+        for i, elem in enumerate(listA):
+            if listDoc[idx+i] != elem:
+                try: 
+                    idx_pos_A_1.pop(pos)
+                except:
+                    pass
+                
+    for pos, idx in enumerate(idx_pos_A_2_copy):
+        for i, elem in enumerate(reversed(listA)):
+            if listDoc[idx-i] != elem:
+                try: 
+                    idx_pos_A_2.pop(pos)  
+                except:
+                    pass
+                
+    for pos, idx in enumerate(idx_pos_B_1_copy):
+        for i, elem in enumerate(listB):
+            if listDoc[idx+i] != elem:
+                try: 
+                    idx_pos_B_1.pop(pos)  
+                except:
+                    pass            
+                
+    for pos, idx in enumerate(idx_pos_B_2_copy):
+        for i, elem in enumerate(reversed(listB)):
+            if listDoc[idx-i] != elem:
+                try: 
+                    idx_pos_B_2.pop(pos)  
+                except:
+                    pass            
+    
+    listF = list(np.ma.concatenate([np.subtract(idx_pos_A_1,idx_pos_B_2),np.subtract(idx_pos_B_1,idx_pos_A_2)]))
+    listF = [ i for i in listF if i > -1 ]
+    
+    return min(listF)/max(listF)
+    
+    
   
 def IP(A,B):
     count = 0
@@ -184,19 +237,26 @@ def IP(A,B):
     for doc in corpus:
         if A in doc and B in doc:
             count += 1
-            
+            sum_dist += get_distances(A, B, doc)
         
-        #TODO calc closest and farthest distances between A and B
-        
-    
     return 1-(1/count)*sum_dist
         
        
 def sem_prox(A,B):
     return correlation(A, B)*math.sqrt(IP(A,B))
 
-def score_implicit(RE,doc):
-    return #TODO
+
+def score_implicit(RE,doc_idx):
+    score = 0
+    freq_dict = compute_freq_doc(corpus(doc_idx), 2, 8)
+    #freq_dict = localmax(freq_dict)
+    #freq_dict = filterStopWords(freq_dict)
+    for k in freq_dict.keys():
+        freq_dict[k] = tf_idf(k,doc_idx)
+    result = sorted(freq_dict.items(), key=lambda x: x[1], reverse=True)[:10]
+    for i, v in enumerate(result):
+        score += sem_prox(RE, v)/(i+1)
+    return score
             
             
             
