@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from nltk import FreqDist
 from nltk.util import ngrams 
 from zipfile import ZipFile
+from sklearn.feature_extraction.text import CountVectorizer
 
 corpus = []
 
@@ -59,6 +60,10 @@ else:
             pickle.dump(corpus, fp)
 
 
+#for i, text in enumerate(corpus):
+#    if "Tourette ' s Syndrome" in text:
+#        print(i)
+        
 def compute_freq_doc(text, minG, maxG):
 
    freq_dist = FreqDist()
@@ -93,15 +98,18 @@ freq_dict = compute_freq_corpus(1, 8)
 
 #transform tuple keys to string and filter all ngrams value > 1
 freq_dict = {' '.join(key):val for key, val in freq_dict.items() if val > 1}
-
+filtered_dict_sorted= sorted(freq_dict.items(), key=lambda x: len(x[0].split()), reverse=True)
 
 
 #unigrams
-single_freq_dict = {key:val for key, val in freq_dict.items() if len(key.split()) == 1}
-#sort unigrams by value
+vectorizer = CountVectorizer()
+vec_fit = vectorizer.fit_transform(corpus)
+single_word_list = vectorizer.get_feature_names_out()
+single_count_list = np.asarray(vec_fit.sum(axis=0))[0]
+single_freq_dict = dict(zip(single_word_list,single_count_list))
+
+single_freq_dict = {key:val for key, val in single_freq_dict.items() if val > 1}
 single_freq_dict = {k: v for k, v in sorted(single_freq_dict.items(), key=lambda item: item[1])}
-
-
 values = np.fromiter(single_freq_dict.values(), dtype=float)
 stop_words_list = np.stack((np.arange(0, len(single_freq_dict)), values), axis = -1)
 list_of_counts = list(single_freq_dict.items())
@@ -138,6 +146,84 @@ fig.set_size_inches(10, 7)
 plt.axvline(x=stop, color='r', linestyle='--')
 
 
+
+expressions_count={}
+
+for key, val in filtered_dict_sorted:
+    expressions_count[key] = val
+  
+
+stop_words_unigrams = list_of_counts[elbow_idx:]
+stop_words=[]
+
+for key, val in stop_words_unigrams:
+    stop_words.append(key)
+
+
+poss_re={}
+
+for key, val in filtered_dict_sorted:
+    words= key.split()
+    n= len(words)
+    #print(n)
+    if len(words) > 2:    
+        ownpref=''
+        ownsuf=''
+        for i in range(0,n):
+            if i==0:
+                ownpref += key.split(' ')[i]
+            elif i==n-1:
+                ownsuf += key.split(' ')[i]
+            else:
+                ownpref += ' ' + key.split(' ')[i]
+                ownsuf += key.split(' ')[i] + ' '
+        xpref= expressions_count[ownpref]
+        xsuf= expressions_count[ownsuf]
+        gluew= val**2 /(xpref * xsuf)
+
+        poss_re[key] = {'n':n,  'freq': val, 'glue': gluew, 'xpref': ownpref, 'xsuf': ownsuf}
+        
+    
+#x = best glue from n-1 words
+
+relevant_expressions={}
+res=[]
+
+for key, val in poss_re.items():
+    if val['n'] in range(3,7):
+        words = key.split()
+        if words[0] in stop_words:
+            continue
+        if words[-1] in stop_words:
+            continue
+        if val['freq'] <= 2:
+            continue
+        #best x
+        try:
+            xpref = poss_re[val['xpref']]['glue']
+            xsuf = poss_re[val['xsuf']]['glue']
+            bestx = max(xpref, xsuf)
+        except:
+            continue
+        #best y
+        besty=1    
+        for keyy, valy in poss_re.items():
+            if key in keyy and valy['n'] == val['n']+1:
+                if valy['glue']<besty:
+                    besty=valy['glue']
+
+        #see if is relevant
+        if val['glue']> (bestx+besty)/2:
+            relevant_expressions[key]={'n':val['n'], 'freq': val['freq'], 'glue': val['glue'], 'x':bestx, 'y':besty}
+            res.append(key)
+
+
+with open('REList', 'wb') as fp:
+    pickle.dump(relevant_expressions, fp)
+   
+with open('REList', 'rb') as fp:
+    relevant_expressions = pickle.load(fp)
+
 def count_RE_in_doc(RE):
     count = 0
     for text in corpus:
@@ -148,21 +234,28 @@ def count_RE_in_doc(RE):
 
 def freq(RE,doc):
     freq_dict = compute_freq_doc(doc, len(RE.split()), len(RE.split()))
-    
+    if len(RE.split()) > 1:
+        freq_dict = {' '.join(key):val for key, val in freq_dict.items()}
+    else:
+        freq_dict = {''.join(key):val for key, val in freq_dict.items()}
     return freq_dict[RE]
 
 
 def tf_idf(RE, doc_idx):
-    doc = corpus(idx)
+    doc = corpus[doc_idx]
     
     freq_RE = freq(RE,doc)
     
-    return (freq_RE/len(doc))*math.log(len(corpus)/count_RE_in_doc(RE))
+    return (freq_RE/len(doc.strip().split()))*math.log(len(corpus)/count_RE_in_doc(RE))
+
+def findWholeWord(w):
+    return re.compile(r'\b({0})\b'.format(w)).search
 
 def calc_prob(word):
     sum_p = 0
     for doc in corpus:
-        sum_p += freq(word, doc)/len(doc.split())
+        if findWholeWord(word)(doc): 
+            sum_p += freq(word, doc)/len(doc.strip().split())
     return (1/len(corpus))*sum_p
 
 def calc_cov(A,B):
@@ -170,14 +263,18 @@ def calc_cov(A,B):
     probB = calc_prob(B)
     sum_p = 0
     for doc in corpus:
-        sum_p += (freq(A, doc)/len(doc.split())-probA)*(freq(B, doc)/len(doc.split())-probB)
-    return (1/len(corpus)-1)*sum_p
+        if findWholeWord(A)(doc) and findWholeWord(B)(doc):
+            sum_p += (freq(A, doc)/len(doc.strip().split())-probA)*(freq(B, doc)/len(doc.strip().split())-probB)
+    
+    return (1/(len(corpus)-1))*sum_p
 
 def correlation(A,B):
-    return calc_cov(A, B)/(math.sqrt(calc_cov(A, A))*(math.sqrt(calc_cov(B, B))))
-
+    return calc_cov(A, B)/(math.sqrt(calc_cov(A, A))*math.sqrt(calc_cov(B, B)))
 
 def get_distances(A,B,doc):
+    closest = 0
+    farthest = 0
+    
     listA = A.split()
     listB = B.split()
     listDoc = doc.strip().split()
@@ -195,47 +292,38 @@ def get_distances(A,B,doc):
     for pos, idx in enumerate(idx_pos_A_1_copy):
         for i, elem in enumerate(listA):
             if listDoc[idx+i] != elem:
-                try: 
                     idx_pos_A_1.pop(pos)
-                except:
-                    pass
+                    break
                 
     for pos, idx in enumerate(idx_pos_A_2_copy):
         for i, elem in enumerate(reversed(listA)):
             if listDoc[idx-i] != elem:
-                try: 
                     idx_pos_A_2.pop(pos)  
-                except:
-                    pass
-                
+                    break
+                           
     for pos, idx in enumerate(idx_pos_B_1_copy):
         for i, elem in enumerate(listB):
             if listDoc[idx+i] != elem:
-                try: 
-                    idx_pos_B_1.pop(pos)  
-                except:
-                    pass            
+                    idx_pos_B_1.pop(pos) 
+                    break
+            
                 
     for pos, idx in enumerate(idx_pos_B_2_copy):
         for i, elem in enumerate(reversed(listB)):
             if listDoc[idx-i] != elem:
-                try: 
-                    idx_pos_B_2.pop(pos)  
-                except:
-                    pass            
+                    idx_pos_B_2.pop(pos)    
+                    break
     
     listF = list(np.ma.concatenate([np.subtract(idx_pos_A_1,idx_pos_B_2),np.subtract(idx_pos_B_1,idx_pos_A_2)]))
     listF = [ i for i in listF if i > -1 ]
-    
+
     return min(listF)/max(listF)
-    
-    
   
 def IP(A,B):
     count = 0
     sum_dist = 0 
-    for doc in corpus:
-        if A in doc and B in doc:
+    for i, doc in enumerate(corpus):
+        if findWholeWord(A)(doc) and findWholeWord(B)(doc):
             count += 1
             sum_dist += get_distances(A, B, doc)
         
@@ -245,25 +333,74 @@ def IP(A,B):
 def sem_prox(A,B):
     return correlation(A, B)*math.sqrt(IP(A,B))
 
+def occur_in_any_doc(A,B):
+    for doc in corpus:
+        if findWholeWord(A)(doc) and findWholeWord(B)(doc):
+            return True
+    return False
 
-def score_implicit(RE,doc_idx):
-    score = 0
-    freq_dict = compute_freq_doc(corpus(doc_idx), 2, 8)
-    #freq_dict = localmax(freq_dict)
-    #freq_dict = filterStopWords(freq_dict)
-    for k in freq_dict.keys():
-        freq_dict[k] = tf_idf(k,doc_idx)
-    result = sorted(freq_dict.items(), key=lambda x: x[1], reverse=True)[:10]
-    for i, v in enumerate(result):
-        score += sem_prox(RE, v)/(i+1)
-    return score
-            
-            
-            
+def calc_comp_medio(RE):
+    count = 0
+    listRE = RE.split()
+    for w in listRE:
+        count += len(w)
+    return count/len(listRE)
+    
+def score_explicit(doc_idx):
+    doc = corpus[doc_idx]
+   
+    #unigrams
+    uni_dict = compute_freq_doc(doc, 1, 1)
+    uni_dict = {''.join(key):val for key, val in uni_dict.items()}
 
+    for k in uni_dict.keys():
+        uni_dict[k] = tf_idf(k,doc_idx) * calc_comp_medio(k)
+    top5_uni = dict(sorted(uni_dict.items(), key=lambda x: x[1], reverse=True)[:5])
+    #relevant expressions
+    re_dict = {}
+    for k in relevant_expressions.keys():
+        if k in doc:
+            re_dict[k] = relevant_expressions[k]['glue']
     
     
+    for k in re_dict.keys():
+        re_dict[k] = tf_idf(k,doc_idx) * calc_comp_medio(k)
+    top5_re = dict(sorted(re_dict.items(), key=lambda x: x[1], reverse=True)[:5])
+    
+    return top5_uni , top5_re if len(re_dict) != 0 else 'No REs in the document'
+    
+def score_implicit(doc_idx):
+    doc = corpus[doc_idx]
+    #relevant expressions
+    re_dict_in = {}
+    re_dict_out = {}
+    for k in relevant_expressions.keys():
+        if k in doc:
+            re_dict_in[k] = relevant_expressions[k]['glue']
+        else:
+            re_dict_out[k] = relevant_expressions[k]['glue']
+    
+    if len(re_dict_in) == 0: return 'No REs in the document'
+    
+    for k in re_dict_in.keys():
+        re_dict_in[k] = tf_idf(k,doc_idx) * calc_comp_medio(k)
+    top10_re = dict(sorted(re_dict_in.items(), key=lambda x: x[1], reverse=True)[:10])
+    
+    scores = {}
+    for k in re_dict_out.keys():
+        score = 0
+        for i, v in enumerate(top10_re):
+            if occur_in_any_doc(k, v):
+                score += sem_prox(k, v)/(i+1)
+        scores[k] = score
+    top10_scores = dict(sorted(scores.items(), key=lambda x: x[1], reverse=True)[:10])
+    return top10_scores
 
+        
+print(score_explicit(2))    
+print(score_implicit(2))
+    
+    
 
 
 
