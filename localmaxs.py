@@ -156,7 +156,7 @@ stop_words=[]
 for key, val in stop_words_unigrams:
     stop_words.append(key)
     
-
+'''
 poss_re={}
 
 for key, val in filtered_dict_sorted:
@@ -180,10 +180,16 @@ for key, val in filtered_dict_sorted:
 
         poss_re[key] = {'n':n,  'freq': val, 'scpg': scpg, 'diceg': diceg,'xpref': ownpref, 'xsuf': ownsuf}
         
-        
+
+with open('PossREList', 'wb') as fp:
+    pickle.dump(poss_re, fp)
+
+'''
+with open('PossREList', 'rb') as fp:
+    poss_re = pickle.load(fp)
     
 #x = best glue from n-1 words
-
+'''
 points=['.',',','?','(',')','!','@','&','^','~','|','>','<', '%', '$', '[', ']', '{', '}', ':', ';', '-','a','s', '_', '+', '=', '*', '\\', '\'', '\"', '`', '#', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '/', '-', "'", 't']
 relevant_expressions={}
 res=[]
@@ -275,24 +281,27 @@ for key, val in poss_re.items():
 
 with open('REList', 'wb') as fp:
     pickle.dump(relevant_expressions, fp)
-
+'''
 with open('REList', 'rb') as fp:
     relevant_expressions = pickle.load(fp)
     
 print('Precision')
-print(len(relevant_expressions)/len(poss_re))
+print(100*len(relevant_expressions)/len(poss_re))
 
 
 
 recallList = []
 for i in range(0,200):
-    recallList.append(random.choice(poss_re.keys()))
+    recallList.append(random.choice(list(poss_re.keys())))
 countR = 0
 for k in recallList:
     if k in relevant_expressions.keys():
         countR += 1
 print('Recall')
-print(countR/200)
+print(100*countR/200)
+
+print('F score')
+print(100*2*((len(relevant_expressions)/len(poss_re))*(countR/200))/((len(relevant_expressions)/len(poss_re))+(countR/200)))
 
 def count_RE_in_doc(RE):
     count = 0
