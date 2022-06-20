@@ -9,6 +9,7 @@ import os
 import numpy as np
 import math
 import pickle
+import random
 import matplotlib.pyplot as plt
 from nltk import FreqDist
 from nltk.util import ngrams 
@@ -49,7 +50,7 @@ def processText(corpus):
         corp.append(''.join(listT))
     return corp
 
-readPickle = False
+readPickle = True
 if readPickle:
     with open('corpusList', 'rb') as fp:
         corpus = pickle.load(fp)
@@ -59,10 +60,6 @@ else:
     with open('corpusList', 'wb') as fp:
             pickle.dump(corpus, fp)
 
-
-#for i, text in enumerate(corpus):
-#    if "Tourette ' s Syndrome" in text:
-#        print(i)
         
 def compute_freq_doc(text, minG, maxG):
 
@@ -102,7 +99,7 @@ filtered_dict_sorted= sorted(freq_dict.items(), key=lambda x: len(x[0].split()),
 
 
 #unigrams
-vectorizer = CountVectorizer()
+vectorizer = CountVectorizer(token_pattern=r'\w+')
 vec_fit = vectorizer.fit_transform(corpus)
 single_word_list = vectorizer.get_feature_names_out()
 single_count_list = np.asarray(vec_fit.sum(axis=0))[0]
@@ -153,20 +150,19 @@ for key, val in filtered_dict_sorted:
     expressions_count[key] = val
   
 
-stop_words_unigrams = list_of_counts[elbow_idx:]
+stop_words_unigrams = list_of_counts[stop:]
 stop_words=[]
 
 for key, val in stop_words_unigrams:
     stop_words.append(key)
-
+    
 
 poss_re={}
 
 for key, val in filtered_dict_sorted:
     words= key.split()
     n= len(words)
-    #print(n)
-    if len(words) > 2:    
+    if len(words) > 1:    
         ownpref=''
         ownsuf=''
         for i in range(0,n):
@@ -179,50 +175,124 @@ for key, val in filtered_dict_sorted:
                 ownsuf += key.split(' ')[i] + ' '
         xpref= expressions_count[ownpref]
         xsuf= expressions_count[ownsuf]
-        gluew= val**2 /(xpref * xsuf)
+        scpg= val**2 /(xpref * xsuf)
+        diceg = 2 * val / (xpref + xsuf)
 
-        poss_re[key] = {'n':n,  'freq': val, 'glue': gluew, 'xpref': ownpref, 'xsuf': ownsuf}
+        poss_re[key] = {'n':n,  'freq': val, 'scpg': scpg, 'diceg': diceg,'xpref': ownpref, 'xsuf': ownsuf}
+        
         
     
 #x = best glue from n-1 words
 
+points=['.',',','?','(',')','!','@','&','^','~','|','>','<', '%', '$', '[', ']', '{', '}', ':', ';', '-','a','s', '_', '+', '=', '*', '\\', '\'', '\"', '`', '#', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '/', '-', "'", 't']
 relevant_expressions={}
 res=[]
 
 for key, val in poss_re.items():
-    if val['n'] in range(3,7):
+    if val['n'] > 2:
+        #print(val['n'], 'ngram')
+        
         words = key.split()
-        if words[0] in stop_words:
+        if words[0].lower() in stop_words:
             continue
-        if words[-1] in stop_words:
+        if words[-1].lower() in stop_words:
             continue
         if val['freq'] <= 2:
             continue
+        grams = key.split()
+        puntcount = 0
+        for g in grams:
+            if g in points:
+                puntcount+=1
+        if puntcount!=0:
+            continue
         #best x
         try:
-            xpref = poss_re[val['xpref']]['glue']
-            xsuf = poss_re[val['xsuf']]['glue']
-            bestx = max(xpref, xsuf)
+            xpref = poss_re[val['xpref']]['scpg']
+            xsuf = poss_re[val['xsuf']]['scpg']
+            bestxscp = max(xpref, xsuf)
+            
+            xpref = poss_re[val['xpref']]['diceg']
+            xsuf = poss_re[val['xsuf']]['diceg']
+            bestxdice = max(xpref, xsuf)
         except:
             continue
+        
+        
         #best y
-        besty=1    
+        bestyscp=1    
         for keyy, valy in poss_re.items():
             if key in keyy and valy['n'] == val['n']+1:
-                if valy['glue']<besty:
-                    besty=valy['glue']
+                if valy['scpg']<bestyscp:
+                    bestyscp=valy['scpg']
+                    
+        bestydice=1    
+        for keyy, valy in poss_re.items():
+            if key in keyy and valy['n'] == val['n']+1:
+                if valy['diceg']<bestydice:
+                    bestydice=valy['diceg']
 
         #see if is relevant
-        if val['glue']> (bestx+besty)/2:
-            relevant_expressions[key]={'n':val['n'], 'freq': val['freq'], 'glue': val['glue'], 'x':bestx, 'y':besty}
+        if (val['scpg']-0.6)>(bestxscp+bestyscp)/2 and (val['diceg']-0.6)>(bestxdice+bestydice)/2:
+            print(key)
+            relevant_expressions[key]={'n':val['n'], 'freq': val['freq'], 'scpg': val['scpg'], 'xscp':bestxscp, 'yscp':bestyscp, 'diceg': val['diceg'], 'xdice':bestxdice, 'ydice':bestydice}
             res.append(key)
+    
+    else:
+        words = key.split()
+        if words[0].lower() in stop_words:
+            continue
+        if words[-1].lower() in stop_words:
+            continue
+        if val['freq'] <= 2:
+            continue
+        grams = key.split()
+        puntcount = 0
+        for g in grams:
+            if g in points:
+                puntcount+=1
+        if puntcount!=0:
+            continue
+        
+        #print(val['n'], 'bigram')
+        for keyy, valy in poss_re.items():
+            if key in keyy and valy['n'] == val['n']+1:
+                if valy['scpg']<bestyscp:
+                    bestyscp=valy['scpg']
+                    
+        bestydice=1    
+        for keyy, valy in poss_re.items():
+            if key in keyy and valy['n'] == val['n']+1:
+                if valy['diceg']<bestydice:
+                    bestydice=valy['diceg'] 
+        
+        if (val['scpg']-0.6)>bestyscp and (val['diceg']-0.6)>bestydice:
+            #print(key)
+            relevant_expressions[key]={'n':val['n'], 'freq': val['freq'], 'scpg': val['scpg'], 'yscp':bestyscp, 'diceg': val['diceg'], 'ydice':bestydice}
+            res.append(key)
+        
 
 
 with open('REList', 'wb') as fp:
     pickle.dump(relevant_expressions, fp)
-   
+
 with open('REList', 'rb') as fp:
     relevant_expressions = pickle.load(fp)
+    
+print('Precision')
+print(len(relevant_expressions)/len(poss_re))
+
+
+
+recallList = []
+for i in range(0,200):
+    recallList.append(random.choice(poss_re.keys()))
+countR = 0
+for k in recallList:
+    if k in relevant_expressions.keys():
+        countR += 1
+print('Recall')
+print(countR/200)
 
 def count_RE_in_doc(RE):
     count = 0
@@ -249,7 +319,7 @@ def tf_idf(RE, doc_idx):
     return (freq_RE/len(doc.strip().split()))*math.log(len(corpus)/count_RE_in_doc(RE))
 
 def findWholeWord(w):
-    return re.compile(r'\b({0})\b'.format(w)).search
+    return re.compile(r'\b({0})\b'.format(re.escape(w))).search
 
 def calc_prob(word):
     sum_p = 0
@@ -314,8 +384,17 @@ def get_distances(A,B,doc):
                     idx_pos_B_2.pop(pos)    
                     break
     
-    listF = list(np.ma.concatenate([np.subtract(idx_pos_A_1,idx_pos_B_2),np.subtract(idx_pos_B_1,idx_pos_A_2)]))
-    listF = [ i for i in listF if i > -1 ]
+    listF = []
+    
+    for a in idx_pos_A_1:
+        for b in idx_pos_B_2:
+            listF.append(a-b)
+    for a in idx_pos_A_2:
+        for b in idx_pos_B_1:
+            listF.append(b-a)
+    listF = [ i for i in listF if i > 0 ]
+    
+    if len(listF) == 0: return 1
 
     return min(listF)/max(listF)
   
@@ -360,7 +439,7 @@ def score_explicit(doc_idx):
     re_dict = {}
     for k in relevant_expressions.keys():
         if k in doc:
-            re_dict[k] = relevant_expressions[k]['glue']
+            re_dict[k] = relevant_expressions[k]['freq']
     
     
     for k in re_dict.keys():
@@ -376,9 +455,9 @@ def score_implicit(doc_idx):
     re_dict_out = {}
     for k in relevant_expressions.keys():
         if k in doc:
-            re_dict_in[k] = relevant_expressions[k]['glue']
+            re_dict_in[k] = relevant_expressions[k]['freq']
         else:
-            re_dict_out[k] = relevant_expressions[k]['glue']
+            re_dict_out[k] = relevant_expressions[k]['freq']
     
     if len(re_dict_in) == 0: return 'No REs in the document'
     
@@ -396,15 +475,33 @@ def score_implicit(doc_idx):
     top10_scores = dict(sorted(scores.items(), key=lambda x: x[1], reverse=True)[:10])
     return top10_scores
 
-        
-print(score_explicit(2))    
-print(score_implicit(2))
+
+len_docs = {}
+for i, doc in enumerate(corpus):
+    len_docs[i] = len(doc.strip().split())
     
-    
 
+#print(sorted(len_docs.items(), key=lambda x: x[1], reverse=True))
 
+print("Doc 303") 
+print(score_explicit(303))    
+print(score_implicit(303))
 
+print("Doc 1104")
+print(score_explicit(1104))    
+print(score_implicit(1104))
 
+print("Doc 1230") 
+print(score_explicit(1230))    
+print(score_implicit(1230))
+
+print("Doc 1595")
+print(score_explicit(1595))    
+print(score_implicit(1595)) 
+
+print("Doc 2120")
+print(score_explicit(2120))    
+print(score_implicit(2120))
 
 
 
